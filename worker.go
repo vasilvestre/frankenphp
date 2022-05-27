@@ -74,11 +74,12 @@ func newWorker(fileName string, requestsChanHandle cgo.Handle) {
 	go func() {
 		workersWaitGroup.Add(1)
 		runtime.LockOSThread()
+		defer runtime.UnlockOSThread()
 
 		cFileName := C.CString(fileName)
 		defer C.free(unsafe.Pointer(cFileName))
 
-		if C.frankenphp_create_server_context(C.uintptr_t(requestsChanHandle), cFileName) < 0 {
+		if C.frankenphp_create_server_context(C.uintptr_t(requestsChanHandle), cFileName, C.CString("worker")) < 0 {
 			panic(fmt.Errorf("error during request context creation"))
 		}
 
@@ -92,7 +93,7 @@ func newWorker(fileName string, requestsChanHandle cgo.Handle) {
 			panic("error during PHP script execution")
 		}
 
-		C.frankenphp_request_shutdown()
+		C.frankenphp_request_shutdown(C.CString("worker"))
 
 		log.Printf("worker %q: shutting down", fileName)
 		workersWaitGroup.Done()

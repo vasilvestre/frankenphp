@@ -174,16 +174,22 @@ func ExecuteScript(responseWriter http.ResponseWriter, request *http.Request) er
 	}
 
 	runtime.LockOSThread()
-	// todo: check if it's ok or not to call runtime.UnlockOSThread() to reuse this thread
+	defer runtime.UnlockOSThread()
 
-	if C.frankenphp_create_server_context(0, nil) < 0 {
+	reqId := C.CString(request.Header.Get("Request-ID"))
+	defer C.free(unsafe.Pointer(reqId))
+
+	fmt.Printf("[%s] C.frankenphp_create_server_context\n", request.Header.Get("Request-ID"))
+	if C.frankenphp_create_server_context(0, nil, reqId) < 0 {
 		return fmt.Errorf("error during request context creation")
 	}
 
+	fmt.Printf("[%s] updateServerContext\n", request.Header.Get("Request-ID"))
 	if err := updateServerContext(request); err != nil {
 		return err
 	}
 
+	fmt.Printf("[%s] C.frankenphp_request_startup\n", request.Header.Get("Request-ID"))
 	if C.frankenphp_request_startup() < 0 {
 		return fmt.Errorf("error during PHP request startup")
 	}
@@ -194,14 +200,16 @@ func ExecuteScript(responseWriter http.ResponseWriter, request *http.Request) er
 	cFileName := C.CString(fc.Env["SCRIPT_FILENAME"])
 	defer C.free(unsafe.Pointer(cFileName))
 
+	fmt.Printf("[%s] C.frankenphp_execute_script\n", request.Header.Get("Request-ID"))
 	if C.frankenphp_execute_script(cFileName) < 0 {
 		return fmt.Errorf("error during PHP script execution")
 	}
 
-	rh := C.frankenphp_clean_server_context()
-	C.frankenphp_request_shutdown()
-
-	cgo.Handle(rh).Delete()
+	fmt.Printf("[%s] C.frankenphp_request_shutdown\n", request.Header.Get("Request-ID"))
+	rh := C.frankenphp_request_shutdown(reqId)
+	if rh != 0 {
+		cgo.Handle(rh).Delete()
+	}
 
 	return nil
 }

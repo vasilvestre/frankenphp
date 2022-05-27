@@ -62,6 +62,7 @@ static inline void php_register_server_variables(void)
 // End of copied functions
 
 typedef struct frankenphp_server_context {
+	int count;
 	uintptr_t request;
 	uintptr_t requests_chan;
 	char *worker_filename;
@@ -152,7 +153,10 @@ void frankenphp_worker_request_shutdown(uintptr_t request) {
 int frankenphp_worker_request_startup() {
 	int retval = SUCCESS;
 
-	zend_try {	
+	frankenphp_server_context *ctx = SG(server_context);
+	ctx->count++;
+
+	zend_try {
 		PG(in_error_log) = 0;
 		PG(during_request_startup) = 1;
 
@@ -284,64 +288,113 @@ uintptr_t frankenphp_clean_server_context() {
 	frankenphp_server_context *ctx = SG(server_context);
 	if (ctx == NULL) return 0;
 
-	free(SG(request_info.auth_password));
-	SG(request_info.auth_password) = NULL;
+	if (SG(request_info.auth_password) != NULL) {
+		free(SG(request_info.auth_password));
+		SG(request_info.auth_password) = NULL;
+	}
 
-	free(SG(request_info.auth_user));
-	SG(request_info.auth_user) = NULL;
+	if (SG(request_info.auth_user) != NULL) {
+		free(SG(request_info.auth_user));
+		SG(request_info.auth_user) = NULL;
+	}
 
-	free((char *) SG(request_info.request_method));
-	SG(request_info.request_method) = NULL;
+	if (SG(request_info.request_method) != NULL) {
+		free((char *) SG(request_info.request_method));
+		SG(request_info.request_method) = NULL;
+	}
 
-	free(SG(request_info.query_string));
-	SG(request_info.query_string) = NULL;
+	if (SG(request_info.query_string) != NULL) {
+		free(SG(request_info.query_string));
+		SG(request_info.query_string) = NULL;
+	}
 
-	free((char *) SG(request_info.content_type));
-	SG(request_info.content_type) = NULL;
+	if (SG(request_info.content_type) != NULL) {
+		free((char *) SG(request_info.content_type));
+		SG(request_info.content_type) = NULL;
+	}
 
-	free(SG(request_info.path_translated));
-	SG(request_info.path_translated) = NULL;
+	if (SG(request_info.path_translated) != NULL) {
+		free(SG(request_info.path_translated));
+		SG(request_info.path_translated) = NULL;
+	}
 
-	free(SG(request_info.request_uri));
-	SG(request_info.request_uri) = NULL;
+	if (SG(request_info.request_uri) != NULL) {
+		free(SG(request_info.request_uri));
+		SG(request_info.request_uri) = NULL;
+	}
 
-	return ctx->request;
+	if (ctx->cookie_data != NULL) {
+		free(ctx->cookie_data);
+		ctx->cookie_data = NULL;
+	}
+
+	uintptr_t rh = ctx->request;
+	if (rh != 0) {
+		ctx->request = 0;
+	}
+
+	return rh;
 }
 
-uintptr_t frankenphp_request_shutdown()
+uintptr_t frankenphp_request_shutdown(char* reqID)
 {
-	php_request_shutdown((void *) 0);
+	frankenphp_server_context *ctx;
 
-	frankenphp_server_context *ctx = SG(server_context);
+	fprintf(stderr, "[%s] frankenphp_request_shutdown\n", reqID);
+	fprintf(stderr, "[%s] SG(server_context): %p\n", reqID, SG(server_context));
 
-	free(ctx->cookie_data);
-	((frankenphp_server_context*) SG(server_context))->cookie_data = NULL;
+	ctx = SG(server_context);
+	if (ctx == NULL) {
+		return 0;
+	}
 
+	fprintf(stderr, "[%s] frankenphp_clean_server_context\n", reqID);
 	uintptr_t rh = frankenphp_clean_server_context();
 
-	free(ctx);
-	SG(server_context) = NULL;
+	fprintf(stderr, "[%s] SG(server_context).count: %d\n", reqID, ctx->count);
+	// Make it 1 to make it segfault
+	if (ctx->count >= 2) {
+		fprintf(stderr, "[%s] php_request_shutdown\n", reqID);
+		php_request_shutdown((void *) 0);
+		fprintf(stderr, "[%s] ts_free_thread\n", reqID);
+		ts_free_thread();
+	}
 
 	return rh;
 }
 
 // set worker to 0 if not in worker mode
-int frankenphp_create_server_context(uintptr_t requests_chan, char* worker_filename)
+int frankenphp_create_server_context(uintptr_t requests_chan, char* worker_filename, char* reqID)
 {
 	frankenphp_server_context *ctx;
 
-	(void) ts_resource(0);
+	// fprintf(stderr, "[%s] ZEND_TSRMLS_CACHE_UPDATE\n", reqID);
+	// ZEND_TSRMLS_CACHE_UPDATE();
 
-	// todo: use a pool
-	ctx = malloc(sizeof(frankenphp_server_context));
-	if (ctx == NULL) return FAILURE;
+	fprintf(stderr, "[%s] tsrm_thread_id: %d\n", reqID, tsrm_thread_id());
+	fprintf(stderr, "[%s] ts_resource\n", reqID);
+	(void) ts_resource(sapi_globals_id);
+
+	fprintf(stderr, "[%s] SG(server_context): %p\n", reqID, SG(server_context));
+	ctx = SG(server_context);
+
+	if (ctx == NULL) {
+		fprintf(stderr, "[%s] emalloc\n", reqID);
+		ctx = malloc(sizeof(frankenphp_server_context));
+		fprintf(stderr, "[%s] emalloc: %p\n", reqID, ctx);
+		fprintf(stderr, "[%s] ctx: %p\n", reqID, ctx);
+		if (ctx == NULL) return FAILURE;
+
+		SG(server_context) = ctx;
+	} else {
+		fprintf(stderr, "[%s] reusing server_context at %p\n", reqID, ctx);
+	}
+	fprintf(stderr, "[%s] SG(server_context): %p\n", reqID, SG(server_context));
 
 	ctx->request = 0;
 	ctx->requests_chan = requests_chan;
 	ctx->worker_filename = worker_filename;
 	ctx->cookie_data = NULL;
-
-	SG(server_context) = ctx;
 
 	return SUCCESS;
 }
@@ -517,16 +570,20 @@ void frankenphp_shutdown()
 
 int frankenphp_request_startup()
 {
+	fprintf(stderr, "php_request_startup\n");
 	if (php_request_startup() == SUCCESS) {
+		frankenphp_server_context *ctx = SG(server_context);
+		ctx->count++;
+
 		return SUCCESS;
 	}
 
 	fprintf(stderr, "problem in php_request_startup\n");
 
 	php_request_shutdown((void *) 0);
-	frankenphp_server_context *ctx = SG(server_context);
-	SG(server_context) = NULL;
-	free(ctx);
+	// frankenphp_server_context *ctx = SG(server_context);
+	// SG(server_context) = NULL;
+	// efree(ctx);
 
 	return FAILURE;
 }

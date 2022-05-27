@@ -4,7 +4,9 @@
 package caddy
 
 import (
+	"math/rand"
 	"net/http"
+	"strconv"
 
 	"github.com/caddyserver/caddy/v2"
 	"github.com/caddyserver/caddy/v2/caddyconfig/caddyfile"
@@ -81,6 +83,7 @@ func (f FrankenPHPModule) ServeHTTP(w http.ResponseWriter, r *http.Request, next
 
 	documentRoot := repl.ReplaceKnown(f.Root, "")
 	fr := frankenphp.NewRequestWithContext(r, documentRoot)
+	r.Header.Add("Request-ID", strconv.Itoa(rand.Int()))
 	fc, _ := frankenphp.FromContext(fr.Context())
 	fc.ResolveRootSymlink = f.ResolveRootSymlink
 	fc.SplitPath = f.SplitPath

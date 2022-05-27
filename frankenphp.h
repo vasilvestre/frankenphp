@@ -6,7 +6,7 @@
 int frankenphp_init();
 void frankenphp_shutdown();
 
-int frankenphp_create_server_context(uintptr_t requests_chan, char *worker_filename);
+int frankenphp_create_server_context(uintptr_t requests_chan, char *worker_filename, char*);
 void frankenphp_update_server_context(
 	uintptr_t request,
 
@@ -24,6 +24,6 @@ int frankenphp_worker_reset_server_context();
 uintptr_t frankenphp_clean_server_context();
 int frankenphp_request_startup();
 int frankenphp_execute_script(const char *file_name);
-uintptr_t frankenphp_request_shutdown();
+uintptr_t frankenphp_request_shutdown(char*);
 
 #endif
