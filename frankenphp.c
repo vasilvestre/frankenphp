@@ -66,7 +66,6 @@ typedef struct frankenphp_server_context {
 	uintptr_t request;
 	uintptr_t requests_chan;
 	char *worker_filename;
-	char *cookie_data;
 } frankenphp_server_context;
 
 // Adapted from php_request_shutdown
@@ -323,11 +322,6 @@ uintptr_t frankenphp_clean_server_context() {
 		SG(request_info.request_uri) = NULL;
 	}
 
-	if (ctx->cookie_data != NULL) {
-		free(ctx->cookie_data);
-		ctx->cookie_data = NULL;
-	}
-
 	uintptr_t rh = ctx->request;
 	if (rh != 0) {
 		ctx->request = 0;
@@ -394,7 +388,6 @@ int frankenphp_create_server_context(uintptr_t requests_chan, char* worker_filen
 	ctx->request = 0;
 	ctx->requests_chan = requests_chan;
 	ctx->worker_filename = worker_filename;
-	ctx->cookie_data = NULL;
 
 	return SUCCESS;
 }
@@ -491,9 +484,7 @@ static char* frankenphp_read_cookies(void)
 
 	if (ctx->request == 0) return "";
 
-	ctx->cookie_data = go_read_cookies(ctx->request);
-
-	return ctx->cookie_data;
+	return go_read_cookies(ctx->request);
 }
 
 static void frankenphp_register_variables(zval *track_vars_array)

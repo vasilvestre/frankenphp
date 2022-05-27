@@ -295,7 +295,7 @@ func go_read_cookies(rh C.uintptr_t) *C.char {
 
 	cookies := r.Cookies()
 	if len(cookies) == 0 {
-		return nil
+		return C.CString("")
 	}
 
 	cookieString := make([]string, len(cookies))
