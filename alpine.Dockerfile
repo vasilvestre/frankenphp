@@ -20,17 +20,23 @@ RUN apk add --no-cache --virtual .build-deps \
 		oniguruma-dev \
 		openssl-dev \
 		readline-dev \
-		sqlite-dev
+		sqlite-dev \
+		# Needed by gotip
+		git \
+		bash
+
+RUN GOBIN=/usr/local/go/bin go install golang.org/dl/gotip@latest && \
+    yes | gotip download 525455
 
 WORKDIR /go/src/app
 
 COPY go.mod go.sum ./
-RUN go mod graph | awk '{if ($1 !~ "@") print $2}' | xargs go get
+RUN gotip mod graph | awk '{if ($1 !~ "@") print $2}' | xargs gotip get
 
 RUN mkdir caddy && cd caddy
 COPY caddy/go.mod caddy/go.sum ./caddy/
 
-RUN cd caddy && go mod graph | awk '{if ($1 !~ "@") print $2}' | xargs go get
+RUN cd caddy && gotip mod graph | awk '{if ($1 !~ "@") print $2}' | xargs gotip get
 
 COPY *.* ./
 COPY caddy caddy
@@ -43,7 +49,7 @@ COPY testdata testdata
 ENV CGO_LDFLAGS="-lssl -lcrypto -lreadline -largon2 -lcurl -lonig -lz $PHP_LDFLAGS" CGO_CFLAGS=$PHP_CFLAGS CGO_CPPFLAGS=$PHP_CPPFLAGS
 
 RUN cd caddy/frankenphp && \
-    go build -ldflags "-X 'github.com/caddyserver/caddy/v2.CustomVersion=FrankenPHP $FRANKENPHP_VERSION Caddy'" && \
+    gotip build -ldflags "-X 'github.com/caddyserver/caddy/v2.CustomVersion=FrankenPHP $FRANKENPHP_VERSION Caddy'" && \
     cp frankenphp /usr/local/bin && \
     cp /go/src/app/caddy/frankenphp/Caddyfile /etc/Caddyfile
 
