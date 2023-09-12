@@ -26,7 +26,7 @@ RUN apt-get update && \
         apt-get clean
 
 RUN GOBIN=/usr/local/go/bin go install golang.org/dl/gotip@latest && \
-    yes | gotip download 525455
+    yes | gotip download 527715
 
 WORKDIR /go/src/app
 
